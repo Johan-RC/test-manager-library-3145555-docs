@@ -1,74 +1,70 @@
-# Constitución — Manager Library (.NET)
+# Constitution — Manager Library (.NET)
 
-Principios innegociables del proyecto. No son estilo ni preferencia: cada artículo trae **cómo se verifica**, porque un principio que
-nadie puede comprobar es una intención. Un cambio que viole un artículo se rechaza sin discutir el resto.
+Non-negotiable principles of the project. They are neither style nor preference: every article states **how it is verified**, because a principle that nobody can check is only an intention. A change that violates an article is rejected without discussing the rest.
 
 ---
 
-## Artículo I — El dominio no depende de nada
+## Article I — The domain depends on nothing
 
-`src/Library.Domain/` no importa ningún otro módulo del proyecto ni librerías de terceros: solo la biblioteca base (`record`, `DateTimeOffset`); ni EF Core, ni ASP.NET, ni FluentValidation.
+`src/Library.Domain/` imports no other module of the project and no third-party libraries: only the base library (`record`, `DateTimeOffset`); neither EF Core, nor ASP.NET, nor FluentValidation.
 
-**Por qué:** es lo único que permite probar las invariantes sin base de datos, sin servidor y sin contenedor, y cambiar de ORM sin tocar reglas.
-**Verificación:** NetArchTest prohíbe que el dominio dependa de `application`, `adapters` o `bootstrap`.
+**Why:** it is the only thing that makes it possible to test the invariants without a database, without a server and without a container, and to change the ORM without touching a single rule.
+**Verification:** NetArchTest forbids the domain from depending on `application`, `adapters` or `bootstrap`.
 
-## Artículo II — El núcleo declara sus puertos; el mundo los implementa
+## Article II — The core declares its ports; the world implements them
 
-La capa de aplicación solo conoce el dominio. Todo lo que necesita del exterior (repositorios, reloj, hash de claves, almacenamiento de
-portadas, generación de tokens) lo expresa como un **puerto que ella misma define**. Ningún tipo de framework o de ORM aparece en la firma de un puerto.
+The application layer only knows the domain. Everything it needs from the outside (repositories, clock, password hashing, cover storage, token issuing) it expresses as a **port that it defines itself**. No framework type and no ORM type ever appears in the signature of a port.
 
-**Verificación:** NetArchTest impide que `application` importe `adapters`. Los tests de aplicación corren con fakes y sin referenciar `adapters`.
+**Verification:** NetArchTest prevents `application` from importing `adapters`. The application tests run against fakes and never reference `adapters`.
 
-## Artículo III — Un único punto de composición
+## Article III — A single composition root
 
-Un solo módulo (`src/Library.Bootstrap/Composition/PortBindings.cs`) es donde un puerto se encuentra con su adaptador. Fuera de él no se instancia infraestructura.
-**Verificación:** ninguna instanciación de una clase de `adapters` fuera de ese módulo; se comprueba con un test de arquitectura.
+One single module (`src/Library.Bootstrap/Composition/PortBindings.cs`) is where a port meets its adapter. Outside it, no infrastructure is ever instantiated.
+**Verification:** no instantiation of an `adapters` class outside that module; checked with an architecture test.
 
-## Artículo IV — SOLID no es decorativo
+## Article IV — SOLID is not decorative
 
-| Principio | Aplicación concreta | Verificación |
+| Principle | Concrete application | Verification |
 |---|---|---|
-| **SRP** | Un servicio de aplicación = un caso de uso. `LendBooksService` presta y no hace nada más | Un servicio con dos razones para cambiar se parte |
-| **OCP** | Cambiar el almacenamiento de portadas (disco → S3) no toca dominio ni aplicación | El adaptador nuevo solo añade una línea en la composición |
-| **LSP** | Los fakes de test sustituyen al adaptador real sin cambiar expectativas | El mismo test pasa contra el fake y el real |
-| **ISP** | Puertos pequeños: `Clock`, `PasswordHasher`, `TokenIssuer`, `CoverStorage` | Ningún implementador deja métodos sin usar |
-| **DIP** | El puerto lo define quien lo consume | Los puertos viven en el paquete de aplicación |
+| **SRP** | One application service = one use case. `LendBooksService` lends and does nothing else | A service with two reasons to change gets split |
+| **OCP** | Changing the cover storage (disk → S3) touches neither domain nor application | The new adapter only adds one line in the composition |
+| **LSP** | Test fakes replace the real adapter without changing expectations | The same test passes against the fake and against the real one |
+| **ISP** | Small ports: `Clock`, `PasswordHasher`, `TokenIssuer`, `CoverStorage` | No implementer is left with unused methods |
+| **DIP** | The port is defined by whoever consumes it | The ports live in the application package |
 
-## Artículo V — El esquema es propiedad de las migraciones
+## Article V — The schema belongs to the migrations
 
-El repositorio `infra` levanta un motor **vacío**. Todo el DDL (tablas, índices, restricciones, extensiones y semilla) vive en las migraciones de
-la aplicación (migraciones de EF Core). Ver [ADR-001](adr/adr-001-propiedad-del-esquema.md).
-**Verificación:** `infra` no contiene `CREATE TABLE`.
+The `infra` repository brings up an **empty** engine. All the DDL (tables, indexes, constraints, extensions and seed data) lives in the application migrations (EF Core migrations). See [ADR-001](adr/adr-001-schema-ownership.md).
+**Verification:** `infra` contains no `CREATE TABLE`.
 
-## Artículo VI — Las invariantes que la base puede imponer, la base las impone
+## Article VI — Whatever the database can enforce, the database enforces
 
-Una regla que solo vive en código protege a la aplicación, no a los datos. Toda invariante expresable en el motor (`CHECK`, `UNIQUE`, FK)
-se declara ahí. Lo que no está aplicado se marca **pendiente** en [`data-model.md`](data-model.md); no se promete.
-**Verificación:** las consultas de `data-model.md` §10 coinciden con lo que declara el documento.
+A rule that lives only in code protects the application, not the data. Every invariant expressible in the engine (`CHECK`, `UNIQUE`, FK) is declared there. Whatever is not enforced is marked **pending** in [`data-model.md`](data-model.md); nothing is promised.
+**Verification:** the queries in `data-model.md` §10 match what the document declares.
 
-## Artículo VII — Lo derivado se calcula, no se almacena
+## Article VII — Derived values are computed, not stored
 
-El estado de un préstamo (`open`, `overdue`, `closed`) y los días de retraso se calculan. No hay columna para ellos.
-**Verificación:** `data-model.md` no lista ninguna columna `status` ni `days_late`.
+The state of a loan (`open`, `overdue`, `closed`) and the days of delay are computed. There is no column for them.
+**Verification:** `data-model.md` lists no `status` column and no `days_late` column.
 
-## Artículo VIII — Los valores congelados no siguen al catálogo
+## Article VIII — Frozen values do not follow the catalogue
 
-La línea de préstamo guarda título, ISBN y categoría del instante del préstamo. Ningún reporte los lee del catálogo vivo.
-**Verificación:** una prueba que renombra un libro después de prestarlo y comprueba que el reporte conserva el título viejo ([ADR-004](adr/adr-004-reporte-agregado-y-congelado.md)).
+The loan line stores the title, the ISBN and the category as they were at the instant of the loan. No report ever reads them from the live catalogue.
+**Verification:** a test that renames a book after it was lent and checks that the report keeps the old title ([ADR-004](adr/adr-004-frozen-aggregated-report.md)).
 
-## Artículo IX — Ningún secreto entra al repositorio ni a un log
+## Article IX — No secret ever enters the repository or a log
 
-Ni contraseñas, ni hashes precalculados, ni la clave del token. Todo secreto viene del entorno. El `.env` real está en `.gitignore`; solo se versiona `.env.example`.
-**Verificación:** `gitleaks` o un `grep` de patrones en CI; ninguna respuesta HTTP incluye `password` ni `password_hash`.
+Neither passwords, nor precomputed hashes, nor the token key. Every secret comes from the environment. The real `.env` is in `.gitignore`; only `.env.example` is versioned.
+**Verification:** `gitleaks` or a pattern `grep` in CI; no HTTP response includes `password` nor `password_hash`.
 
-## Artículo X — Gana el motor
+## Article X — The engine wins
 
-Si el documento de datos y la base discrepan, el documento está roto y se corrige el documento.
+If the data document and the database disagree, the document is broken and the document gets fixed.
 
-## Artículo XI — Idioma
+## Article XI — Language
 
-Código, columnas y rutas en inglés. Documentación y mensajes al usuario en español.
+**Everything is written in English**: code, columns and routes, all documentation, all identifiers, and every message returned to the user. There is no Spanish in this project.
 
-## Artículo XII — Nada se da por hecho sin evidencia
+## Article XII — Nothing is taken as done without evidence
 
-Una tarea de [`tasks.md`](tasks.md) está terminada cuando su **evidencia** existe y se puede ejecutar, no cuando «ya está programada».
+A task in [`tasks.md`](tasks.md) is finished when its **evidence** exists and can be executed, not when it is "already implemented".

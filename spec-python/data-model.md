@@ -1,225 +1,218 @@
-# Modelo de datos — Manager Library
+# Data model — Manager Library
 
-**El único sitio donde vive el modelo de datos.** Quien implemente no necesita abrir el código ni conectarse
-al motor para saber qué hay, de qué tipo y con qué regla.
+**The only place where the data model lives.** Whoever implements it does not need to open the code nor connect to the engine to know what is there, of what type and with what rule.
 
-- Motor de referencia: PostgreSQL 16. Esquema `library`. Servidor en UTC.
-- Rige bajo [`constitution.md`](constitution.md) y [`spec.md`](spec.md). Si algo contradice a este documento, gana este documento.
+- Reference engine: PostgreSQL 16. Schema `library`. Server in UTC.
+- Governed by [`constitution.md`](constitution.md) and [`spec.md`](spec.md). If something contradicts this document, this document wins.
 
-Cada regla lleva una de **tres marcas**: **motor** (la impone la base), **solo dominio** (solo el código),
-**pendiente (T-xx)** (la pone esa tarea de [`tasks.md`](tasks.md)).
+Every rule carries one of **three marks**: **engine** (the database enforces it), **domain only** (only the code does), **pending (T-xx)** (the corresponding task in [`tasks.md`](tasks.md) adds it).
 
 ---
 
-## 0. Convención de nombres
+## 0. Naming convention
 
-| Elemento | Convención | Ejemplo |
+| Element | Convention | Example |
 |---|---|---|
-| Tabla | `snake_case`, inglés, **singular** | `loan_item` |
-| Columna | `snake_case`, inglés, singular, ASCII | `due_at` |
-| Restricción escrita a mano | `ck_{tabla}_{regla}` | `ck_book_available_range` |
-| Esquema | `library` | `library.loan` |
+| Table | `snake_case`, English, **singular** | `loan_item` |
+| Column | `snake_case`, English, singular, ASCII | `due_at` |
+| Hand-written constraint | `ck_{table}_{rule}` | `ck_book_available_range` |
+| Schema | `library` | `library.loan` |
 
-`user` se escribe `library."user"` en SQL a mano; el ORM lo entrecomilla solo.
+`user` is written `library."user"` in raw SQL; the ORM quotes it on its own.
 
-## 1. Glosario
+## 1. Glossary
 
-| Término | Definición | Dónde vive |
+| Term | Definition | Where it lives |
 |---|---|---|
-| **Libro** | Título del catálogo, con autor, ISBN, categoría, ejemplares y portada opcional | `book` |
-| **Categoría** | Clasificación fija de cinco, sembrada, sin mantenimiento | `category` |
-| **Ejemplar** | Copia física de un libro. Se cuenta, no se identifica | `book.total_copies`, `book.available_copies` |
-| **Socio** | Persona que pide prestado. No inicia sesión | `member` |
-| **Préstamo** | Hecho consumado: quién lo pidió, quién lo registró y cuándo | `loan` |
-| **Línea de préstamo** | Un libro dentro de un préstamo, con su vencimiento y su devolución | `loan_item` |
-| **Estado del préstamo** | `open`, `overdue` o `closed`. **Se calcula, no se almacena** | sin columna |
-| **Usuario** | Operador interno con rol `admin` o `librarian` | `user` |
-| **Congelado** | Copia del valor en el instante del préstamo; no sigue al catálogo | `loan_item.book_title`, `isbn`, `category_name` |
+| **Book** | Catalogue title, with author, ISBN, category, copies and optional cover | `book` |
+| **Category** | Fixed classification of five, seeded, without maintenance | `category` |
+| **Copy** | A physical copy of a book. It is counted, not identified | `book.total_copies`, `book.available_copies` |
+| **Member** | A person who borrows. Does not log in | `member` |
+| **Loan** | A consummated fact: who asked for it, who registered it and when | `loan` |
+| **Loan line** | A book inside a loan, with its due date and its return | `loan_item` |
+| **Loan state** | `open`, `overdue` or `closed`. **Computed, not stored** | no column |
+| **User** | Internal operator with the role `admin` or `librarian` | `user` |
+| **Frozen** | Copy of the value at the instant of the loan; it does not follow the catalogue | `loan_item.book_title`, `isbn`, `category_name` |
 
-## 2. Entidades y relaciones
+## 2. Entities and relationships
 
 ```mermaid
 erDiagram
-    category ||--o{ book      : "clasifica"
-    member   ||--o{ loan      : "pide"
-    user     ||--o{ loan      : "registra"
-    loan     ||--|{ loan_item : "compone"
-    book     ||--o{ loan_item : "prestado en (FK RESTRICT)"
+    category ||--o{ book      : "classifies"
+    member   ||--o{ loan      : "asks for"
+    user     ||--o{ loan      : "registers"
+    loan     ||--|{ loan_item : "composes"
+    book     ||--o{ loan_item : "lent in (FK RESTRICT)"
 ```
 
-Seis entidades, seis tablas. No hay tabla de reporte, de multas ni de auditoría.
+Six entities, six tables. There is no report table, no fines table and no audit table.
 
-## 3. Modelo físico
+## 3. Physical model
 
-Ninguna columna lleva `DEFAULT`: los valores los pone el dominio.
+No column carries a `DEFAULT`: the values are set by the domain.
 
-**`category`** — semilla de solo lectura.
+**`category`** — read-only seed.
 
-| Columna | Tipo | Nulable | Nota |
+| Column | Type | Nullable | Note |
 |---|---|---|---|
-| `id` | `uuid` | no | PK. Identificadores literales (ver §9) |
-| `name` | `varchar(120)` | no | Único |
+| `id` | `uuid` | no | PK. Literal identifiers (see §9) |
+| `name` | `varchar(120)` | no | Unique |
 
 **`book`**
 
-| Columna | Tipo | Nulable | Nota |
+| Column | Type | Nullable | Note |
 |---|---|---|---|
 | `id` | `uuid` | no | PK |
-| `title` | `varchar(250)` | no | Recortado por el dominio |
+| `title` | `varchar(250)` | no | Trimmed by the domain |
 | `author` | `varchar(200)` | no | |
-| `isbn` | `char(13)` | no | Solo dígitos. Único entre libros activos (índice parcial) |
-| `category_id` | `uuid` | no | FK restrictiva a `category` |
+| `isbn` | `char(13)` | no | Digits only. Unique among active books (partial index) |
+| `category_id` | `uuid` | no | Restrictive FK to `category` |
 | `total_copies` | `integer` | no | ≥ 1 |
-| `available_copies` | `integer` | no | Entre 0 y `total_copies` |
-| `cover_key` | `varchar(512)` | **sí** | Clave opaca; nunca ruta ni bytes; nunca cadena vacía |
-| `deleted_at` | `timestamptz` | sí | Baja lógica. Nula = activo |
+| `available_copies` | `integer` | no | Between 0 and `total_copies` |
+| `cover_key` | `varchar(512)` | **yes** | Opaque key; never a path nor bytes; never an empty string |
+| `deleted_at` | `timestamptz` | yes | Soft delete. Null = active |
 
 **`member`**
 
-| Columna | Tipo | Nulable | Nota |
+| Column | Type | Nullable | Note |
 |---|---|---|---|
 | `id` | `uuid` | no | PK |
 | `full_name` | `varchar(200)` | no | |
-| `document_number` | `varchar(30)` | no | Único |
+| `document_number` | `varchar(30)` | no | Unique |
 
 **`loan`**
 
-| Columna | Tipo | Nulable | Nota |
+| Column | Type | Nullable | Note |
 |---|---|---|---|
 | `id` | `uuid` | no | PK |
-| `member_id` | `uuid` | no | FK restrictiva a `member` |
-| `loaned_by_user_id` | `uuid` | no | FK restrictiva a `user` |
-| `loaned_at` | `timestamptz` | no | Instante del préstamo |
+| `member_id` | `uuid` | no | Restrictive FK to `member` |
+| `loaned_by_user_id` | `uuid` | no | Restrictive FK to `user` |
+| `loaned_at` | `timestamptz` | no | Instant of the loan |
 
 **`loan_item`**
 
-| Columna | Tipo | Nulable | Nota |
+| Column | Type | Nullable | Note |
 |---|---|---|---|
 | `id` | `uuid` | no | PK |
-| `loan_id` | `uuid` | no | FK con `ON DELETE CASCADE` |
-| `book_id` | `uuid` | no | FK restrictiva a `book` |
-| `book_title` | `varchar(250)` | no | Congelado; mismo ancho que `book.title` |
-| `isbn` | `char(13)` | no | Congelado |
-| `category_name` | `varchar(120)` | no | Congelado; **sin FK a propósito** |
-| `due_at` | `timestamptz` | no | `loaned_at` + 14 días, calculado por el dominio |
-| `returned_at` | `timestamptz` | **sí** | Nula mientras no se devuelve |
+| `loan_id` | `uuid` | no | FK with `ON DELETE CASCADE` |
+| `book_id` | `uuid` | no | Restrictive FK to `book` |
+| `book_title` | `varchar(250)` | no | Frozen; same width as `book.title` |
+| `isbn` | `char(13)` | no | Frozen |
+| `category_name` | `varchar(120)` | no | Frozen; **no FK on purpose** |
+| `due_at` | `timestamptz` | no | `loaned_at` + 14 days, computed by the domain |
+| `returned_at` | `timestamptz` | **yes** | Null while it is not returned |
 
 **`user`**
 
-| Columna | Tipo | Nulable | Nota |
+| Column | Type | Nullable | Note |
 |---|---|---|---|
 | `id` | `uuid` | no | PK |
-| `username` | `varchar(120)` | no | Único, minúsculas, recortado |
-| `password_hash` | `varchar(512)` | no | Nunca se indexa |
-| `role` | `varchar(40)` | no | `admin` o `librarian` |
+| `username` | `varchar(120)` | no | Unique, lowercase, trimmed |
+| `password_hash` | `varchar(512)` | no | Never indexed |
+| `role` | `varchar(40)` | no | `admin` or `librarian` |
 
-Reglas transversales: **todas las marcas de tiempo son `timestamptz`**; **no hay columnas de auditoría** (`created_at`/`updated_at`)
-porque ningún requisito las pide.
+Cross-cutting rules: **all timestamps are `timestamptz`**; **there are no audit columns** (`created_at`/`updated_at`) because no requirement asks for them.
 
-## 4. Restricciones e índices: dónde vive cada regla
+## 4. Constraints and indexes: where each rule lives
 
-| Regla | Objeto | Marca |
+| Rule | Object | Mark |
 |---|---|---|
-| Claves primarias de las seis tablas | `PK_*` | **motor** |
-| `category.name` único | índice único | **motor** |
-| `member.document_number` único | índice único | **motor** |
-| `user.username` único | índice único | **motor** |
-| `isbn` único entre activos | índice único parcial `WHERE deleted_at IS NULL` | **motor** |
-| `book.category_id` → `category.id` RESTRICT | FK | **motor** |
-| `loan.member_id` → `member.id` RESTRICT | FK | **motor** |
-| `loan.loaned_by_user_id` → `user.id` RESTRICT | FK | **motor** |
-| `loan_item.loan_id` → `loan.id` CASCADE | FK | **motor** |
-| `loan_item.book_id` → `book.id` RESTRICT | FK | **motor** |
-| `0 <= available_copies <= total_copies` | `ck_book_available_range` | **motor** — última barrera de concurrencia |
-| `total_copies >= 1` | `ck_book_total_positive` | **pendiente (T-18)** · hoy solo dominio |
-| Único `(loan_id, book_id)` | índice único | **motor** |
-| `role` en (`admin`,`librarian`) | `ck_user_role` | **pendiente (T-18)** · hoy solo dominio |
-| Máximo 3 sin devolver por socio | — | **solo dominio** (no expresable en un `CHECK`) |
-| Socio con vencidos no pide | — | **solo dominio** |
-| Descontar ejemplar y crear línea son una operación | — | **solo dominio** (una transacción) |
-| Un préstamo tiene 1 a 3 líneas | — | **solo dominio** |
-| Préstamos y devoluciones inmutables salvo `returned_at` | — | **solo dominio** (por ausencia de operación) |
+| Primary keys of the six tables | `PK_*` | **engine** |
+| `category.name` unique | unique index | **engine** |
+| `member.document_number` unique | unique index | **engine** |
+| `user.username` unique | unique index | **engine** |
+| `isbn` unique among active books | partial unique index `WHERE deleted_at IS NULL` | **engine** |
+| `book.category_id` → `category.id` RESTRICT | FK | **engine** |
+| `loan.member_id` → `member.id` RESTRICT | FK | **engine** |
+| `loan.loaned_by_user_id` → `user.id` RESTRICT | FK | **engine** |
+| `loan_item.loan_id` → `loan.id` CASCADE | FK | **engine** |
+| `loan_item.book_id` → `book.id` RESTRICT | FK | **engine** |
+| `0 <= available_copies <= total_copies` | `ck_book_available_range` | **engine** — last barrier of concurrency |
+| `total_copies >= 1` | `ck_book_total_positive` | **pending (T-18)** · today domain only |
+| Unique `(loan_id, book_id)` | unique index | **engine** |
+| `role` in (`admin`,`librarian`) | `ck_user_role` | **pending (T-18)** · today domain only |
+| Maximum 3 not returned per member | — | **domain only** (not expressible in a `CHECK`) |
+| Member with overdue loans does not borrow | — | **domain only** |
+| Subtracting a copy and creating the line are one operation | — | **domain only** (one transaction) |
+| A loan has 1 to 3 lines | — | **domain only** |
+| Loans and returns immutable except `returned_at` | — | **domain only** (by absence of operation) |
 
-Índices de acceso: `book (category_id, title)` parcial sobre activos; `loan (loaned_at)`; `loan_item (book_id)`;
-`loan_item (due_at) WHERE returned_at IS NULL` para vencidos.
+Access indexes: `book (category_id, title)` partial over active books; `loan (loaned_at)`; `loan_item (book_id)`; `loan_item (due_at) WHERE returned_at IS NULL` for overdue.
 
-## 5. Política de claves foráneas
+## 5. Foreign key policy
 
-| # | FK | `ON DELETE` | Por qué |
+| # | FK | `ON DELETE` | Why |
 |---|---|---|---|
-| FK-1 | `book.category_id` | RESTRICT | Una categoría con libros no se elimina |
-| FK-2 | `loan_item.loan_id` | CASCADE | Composición: la línea no vive sin su préstamo (nunca se dispara: no se borran préstamos) |
-| FK-3 | `loan_item.book_id` | RESTRICT | Barrera de última instancia: un borrado manual no puede huerfanar el histórico |
-| FK-4 | `loan.member_id` | RESTRICT | El socio de un préstamo no desaparece |
-| FK-5 | `loan.loaned_by_user_id` | RESTRICT | La autoría es un dato contable |
+| FK-1 | `book.category_id` | RESTRICT | A category with books is not deleted |
+| FK-2 | `loan_item.loan_id` | CASCADE | Composition: the line does not live without its loan (never fired: loans are not deleted) |
+| FK-3 | `loan_item.book_id` | RESTRICT | Last-resort barrier: a manual delete cannot orphan the history |
+| FK-4 | `loan.member_id` | RESTRICT | The member of a loan does not disappear |
+| FK-5 | `loan.loaned_by_user_id` | RESTRICT | Authorship is accounting data |
 
-`ON UPDATE NO ACTION` en todas: las claves son UUID de la aplicación y no cambian.
+`ON UPDATE NO ACTION` on all of them: the keys are application-generated UUIDs and they do not change.
 
-## 6. Patrones de acceso
+## 6. Access patterns
 
-| # | Patrón | Frecuencia |
+| # | Pattern | Frequency |
 |---|---|---|
-| Q1 | Buscar libros (texto, categoría, activos, orden por título, paginado) | Alta |
-| Q2 | Libro por id | Alta |
-| Q3 | Libros por lote de ids (antes de prestar) | Alta, punto de contención |
-| Q4 | Listar categorías | Alta |
-| Q5 | Préstamo con sus líneas | Media |
-| Q6 | Préstamos por rango, estado y socio | Alta |
-| Q7 | Líneas sin devolver de un socio (cuenta y vencidos) | Alta, en cada préstamo |
-| Q8 | Vencidos globales | Media |
-| Q9 | Reporte: más prestados por rango | Alta, la más costosa |
-| Q10 | Usuario por nombre | Alta, en cada inicio de sesión |
+| Q1 | Search books (text, category, active, ordered by title, paginated) | High |
+| Q2 | Book by id | High |
+| Q3 | Books by batch of ids (before lending) | High, contention point |
+| Q4 | List categories | High |
+| Q5 | Loan with its lines | Medium |
+| Q6 | Loans by range, state and member | High |
+| Q7 | Lines not returned of a member (count and overdue) | High, on every loan |
+| Q8 | Global overdue | Medium |
+| Q9 | Report: most borrowed by range | High, the most expensive |
+| Q10 | User by username | High, on every login |
 
-## 7. Privacidad y retención
+## 7. Privacy and retention
 
-| Tabla | Atributo | Clasificación | Manejo |
+| Table | Attribute | Classification | Handling |
 |---|---|---|---|
-| `user` | `username` | Dato personal | Acceso restringido |
-| `user` | `password_hash` | **Secreto** | Jamás en logs ni respuestas; nunca se indexa |
-| `member` | `full_name`, `document_number` | **Dato personal** | Solo `admin` y `librarian`; **nunca** en el reporte ni en endpoints públicos |
-| `loan`, `loan_item` | todos | Comerciales; `member_id` es dato personal indirecto | Retención indefinida |
-| `book`, `category` | todos | Públicos | Baja lógica / sin borrado |
+| `user` | `username` | Personal data | Restricted access |
+| `user` | `password_hash` | **Secret** | Never in logs nor responses; never indexed |
+| `member` | `full_name`, `document_number` | **Personal data** | Only `admin` and `librarian`; **never** in the report nor in public endpoints |
+| `loan`, `loan_item` | all | Commercial; `member_id` is indirect personal data | Indefinite retention |
+| `book`, `category` | all | Public | Soft delete / no deletion |
 
-El reporte agrega por libro: **no expone socios ni bibliotecarios**.
+The report aggregates by book: **it does not expose members nor librarians**.
 
-**Retención:** préstamos y líneas nunca se borran; libros solo baja lógica; el binario de portada es el **único** dato que se borra
-físicamente. Orden obligatorio: primero se anula `cover_key` y se confirma la transacción; después se borra el binario.
+**Retention:** loans and lines are never deleted; books only have a soft delete; the cover binary is the **only** data that is physically deleted. Mandatory order: first `cover_key` is nulled and the transaction is committed; then the binary is deleted.
 
-## 8. Auditoría
+## 8. Audit
 
-El sistema **no** lleva `created_at`/`updated_at`. Los instantes de negocio ya tienen columna: `loan.loaned_at`, `loan_item.returned_at`
-y `book.deleted_at`. Si aparece una pregunta del tipo «¿quién cambió este título?», la decisión vuelve al propietario.
+The system **does not** keep `created_at`/`updated_at`. The business instants already have a column: `loan.loaned_at`, `loan_item.returned_at` and `book.deleted_at`. If a question like "who changed this title?" shows up, the decision goes back to the owner.
 
-## 9. Estrategia de semilla
+## 9. Seed strategy
 
-Las **cinco categorías** van en la migración inicial, con identificadores fijos:
+The **five categories** go in the initial migration, with fixed identifiers:
 
 | `id` | `name` |
 |---|---|
-| `11111111-1111-4111-8111-111111111111` | Novela |
-| `22222222-2222-4222-8222-222222222222` | Ciencia |
-| `33333333-3333-4333-8333-333333333333` | Tecnología |
-| `44444444-4444-4444-8444-444444444444` | Historia |
-| `55555555-5555-4555-8555-555555555555` | Infantil |
+| `11111111-1111-4111-8111-111111111111` | Fiction |
+| `22222222-2222-4222-8222-222222222222` | Science |
+| `33333333-3333-4333-8333-333333333333` | Technology |
+| `44444444-4444-4444-8444-444444444444` | History |
+| `55555555-5555-4555-8555-555555555555` | Children |
 
-El **administrador inicial no lo siembra la base**: lo crea el arranque de la aplicación con credenciales de entorno, porque el hash
-solo puede producirlo el puerto de hash. El sembrador de datos de demostración (`tool`) usa la **API**, nunca SQL directo.
+The **initial administrator is not seeded by the database**: the application boot creates it from environment credentials, because only the hashing port can produce the hash. The demo data seeder (`tool`) uses the **API**, never direct SQL.
 
-## 10. Cómo se comprueba que este documento no miente
+## 10. How this document is checked for lying
 
 ```sql
--- Debe devolver las columnas de §3, sin ningún DEFAULT
+-- Must return the columns of §3, with no DEFAULT at all
 SELECT table_name, ordinal_position, column_name, data_type, is_nullable, column_default
 FROM information_schema.columns WHERE table_schema = 'library' ORDER BY 1, 2;
 
--- Restricciones: PK, FK y CHECK
+-- Constraints: PK, FK and CHECK
 SELECT c.conrelid::regclass, c.conname, c.contype, pg_get_constraintdef(c.oid)
 FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
 WHERE n.nspname = 'library' ORDER BY 1, 3, 2;
 
--- Índices
+-- Indexes
 SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = 'library' ORDER BY 1, 2;
 ```
 
-Si una regla marcada **motor** no aparece, alguien la borró. Si una marcada **solo dominio** aparece, ya se bajó y hay que reclasificarla.
-Gana el motor: el documento está roto y se corrige el documento.
+If a rule marked **engine** does not appear, somebody deleted it. If one marked **domain only** appears, it has been pushed down and has to be reclassified.
+The engine wins: the document is broken and the document gets fixed.
